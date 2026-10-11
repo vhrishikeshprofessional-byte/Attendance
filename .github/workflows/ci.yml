@@ -1,0 +1,148 @@
+name: CI Pipeline
+ 
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch: {}
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  REGISTRY: ghcr.io
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================
+  # BACKEND JOBS
+  # ==========================================
+  backend-lint-type:
+    name: Backend - Ruff & MyPy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r attendance-backend/requirements-dev.txt
+      - name: Ruff Check
+        run: python -m ruff check attendance-backend
+      - name: MyPy Check
+        run: python -m mypy attendance-backend/app
+
+  backend-sast:
+    name: Backend - Bandit (SAST)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r attendance-backend/requirements-dev.txt
+      - name: Bandit Scan
+        run: python -m bandit -r attendance-backend/app -s B105 -f json -o bandit.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit.json
+
+  backend-deps:
+    name: Backend - pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install pip-audit
+      - name: Audit deps
+        run: python -m pip_audit -r attendance-backend/requirements.txt --strict
+
+  backend-test:
+    name: Backend - Pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -r attendance-backend/requirements-dev.txt
+      - name: Pytest with Coverage
+        run: |
+          cd attendance-backend
+          python -m pytest --cov=app --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=80 -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage
+          path: attendance-backend/coverage.xml
+
+  # ==========================================
+  # FRONTEND JOBS
+  # ==========================================
+  frontend-types:
+    name: Frontend - Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: attendance-frontend/package-lock.json
+      - run: cd attendance-frontend && npm ci
+      - run: cd attendance-frontend && npm run typecheck
+
+  frontend-deps:
+    name: Frontend - npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: cd attendance-frontend && npm audit --audit-level=high
+
+  frontend-test:
+    name: Frontend - Vitest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: attendance-frontend/package-lock.json
+      - run: cd attendance-frontend && npm ci
+      - name: Vitest Coverage
+        run: |
+          cd attendance-frontend
+          npx vitest run --coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: attendance-frontend/coverage/
+
+  frontend-build:
+    name: Frontend - Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: attendance-frontend/package-lock.json
+      - run: cd attendance-frontend && npm ci
+      - run: cd attendance-frontend && npm run build
+

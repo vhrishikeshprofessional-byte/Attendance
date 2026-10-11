@@ -1,0 +1,4 @@
+*       @dev-team
+/attendance-backend/ @backend-team
+/attendance-frontend/ @frontend-team
+/.github/workflows/ @devops-team

@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:7.0
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - 27017:27017
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }"]
+      interval: 10s
+      start_period: 30s
+
+  backend:
+    build: ./attendance-backend
+    ports:
+      - 8000:8000
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/attendance
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build: ./attendance-frontend
+    ports:
+      - 5173:80
+    depends_on:
+      - backend
